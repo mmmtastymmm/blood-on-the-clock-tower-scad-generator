@@ -1,4 +1,4 @@
-requests~=2.32.3
+requests
 bs4
 solidpython
 Pillow
