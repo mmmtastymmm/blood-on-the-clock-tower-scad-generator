@@ -54,7 +54,7 @@ def coin_model(role_name, greyscale_png_filename,
 
     # Create the image relief using SolidPython's surface() function.
     # The 'center=True' option centers the relief geometry.
-    image_relief = surface(file=abs_path.stem + abs_path.suffix, center=True)
+    image_relief = surface(file=abs_path.name, center=True)
     # Scale the relief in the XY dimensions by the calculated factor and in the Z dimension by z_scale.
     image_relief = scale((scale_factor, scale_factor, z_scale))(image_relief)
 
