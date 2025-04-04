@@ -1,5 +1,7 @@
 import os
 import json
+import shutil
+
 import requests
 from solid import *
 from solid.utils import *
@@ -29,7 +31,11 @@ def coin_model(role_name, greyscale_png_filename,
     and the maximum pixel value corresponds to a height of `desired_relief_height` in mm.
     """
     # Convert the image file path to an absolute path with forward slashes.
-    abs_path = os.path.abspath(greyscale_png_filename).replace('\\', '/')
+    abs_path = Path(os.path.abspath(greyscale_png_filename).replace('\\', '/'))
+    shutil.copy(greyscale_png_filename, "scads")
+    print(
+        f"Copied {greyscale_png_filename} to scads directory for use in OpenSCAD."
+    )
 
     # Create the base coin as a simple cylinder.
     coin = cylinder(d=diameter, h=height)
@@ -48,7 +54,7 @@ def coin_model(role_name, greyscale_png_filename,
 
     # Create the image relief using SolidPython's surface() function.
     # The 'center=True' option centers the relief geometry.
-    image_relief = surface(file=abs_path, center=True)
+    image_relief = surface(file=abs_path.stem + abs_path.suffix, center=True)
     # Scale the relief in the XY dimensions by the calculated factor and in the Z dimension by z_scale.
     image_relief = scale((scale_factor, scale_factor, z_scale))(image_relief)
 
