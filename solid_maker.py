@@ -1,12 +1,14 @@
 import os
 import json
 import shutil
+import subprocess
+import textwrap
 
 import requests
 from solid import *
 from solid.utils import *
 from solid import scad_render_to_file
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def calculate_scale_factor(greyscale_image, diameter: float) -> float:
@@ -16,14 +18,14 @@ def calculate_scale_factor(greyscale_image, diameter: float) -> float:
     """
     img = Image.open(greyscale_image)
     width, height = img.size
-    desired_diameter = diameter * 0.55
+    desired_diameter = diameter * 0.70
     scale_factor = desired_diameter / max(width, height)
     return scale_factor
 
 
 def coin_model(role_name, greyscale_png_filename,
                diameter=50, height=6,
-               text_depth=2, text_size=3,
+               text_depth=2, text_size=4,
                desired_relief_height=6.0):
     """
     Creates a coin model with an engraved relief (image) on the coin’s top.
@@ -55,15 +57,19 @@ def coin_model(role_name, greyscale_png_filename,
     # Create the image relief using SolidPython's surface() function.
     # The 'center=True' option centers the relief geometry.
     image_relief = surface(file=abs_path.name, center=True)
+
     # Scale the relief in the XY dimensions by the calculated factor and in the Z dimension by z_scale.
     image_relief = scale((scale_factor, scale_factor, z_scale))(image_relief)
 
     # Translate the relief upward so that its base (corresponding to the minimum pixel value)
     # aligns with the top of the coin (z = height).
-    image_relief = translate((0, 0, height - min_pixel * z_scale))(image_relief)
+    image_relief = translate((0, 0, height - text_depth))(image_relief)
+
+    # Extrude a thin shape to cut into the coin
+    # image_relief = linear_extrude(height=text_depth)(image_relief)
 
     # (Optional) Color the relief for debugging; uncomment if needed.
-    # image_relief = color("red")(image_relief)
+    image_relief = color("red")(image_relief)
 
     # Create the engraved text by extruding the role name.
     engraved_text = linear_extrude(height=text_depth)(
@@ -105,6 +111,43 @@ def convert_png_to_greyscale_png(png_path, greyscale_png_path):
     print(f"Converted {png_path} to {greyscale_png_path}")
 
 
+def create_silhouette_image(input_path, output_path):
+    """
+    Converts an image to a black-on-white silhouette (useful for subtracting shapes in SCAD).
+    - Flattens the image onto a white background (removes transparency).
+    - Converts to grayscale, inverts it, then thresholds to pure black & white.
+    """
+    img = Image.open(input_path).convert("RGBA")
+
+    # Remove transparency by compositing onto a white background
+    background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    composite = Image.alpha_composite(background, img).convert("L")
+
+    # Invert image so that the shape becomes black
+    composite = ImageOps.invert(composite)
+
+    # Threshold to black & white
+    bw = composite.point(lambda x: 0 if x < 128 else 255, mode='1')
+
+    bw.save(output_path)
+    print(f"Silhouette image saved to {output_path}")
+
+
+def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"):
+    # Convert SCAD to STL using OpenSCAD CLI
+    result = subprocess.run([
+        "openscad",
+        "-o", stl_filename,
+        scad_filename
+    ], capture_output=True)
+
+    if result.returncode == 0:
+        print(f"✅ STL exported successfully: {stl_filename}")
+    else:
+        print("❌ Error generating STL")
+        print(result.stderr.decode())
+
+
 def main():
     # Load the role data from 'roles.json'.
     with open("roles.json") as f:
@@ -114,6 +157,7 @@ def main():
     os.makedirs("pngs", exist_ok=True)
     os.makedirs("grey_pngs", exist_ok=True)
     os.makedirs("scads", exist_ok=True)
+    os.makedirs("stls", exist_ok=True)
 
     # Iterate over each role in the JSON map.
     count = 0
@@ -122,7 +166,9 @@ def main():
         role_safe = role.replace(" ", "_").replace("'", "")
         png_filename = os.path.join("pngs", f"{role_safe}.png")
         grey_png_filename = os.path.join("grey_pngs", f"{role_safe}.png")
+        silhouette_png_filename = os.path.join("grey_pngs", f"{role_safe}_silhouette.png")
         scad_filename = os.path.join("scads", f"{role_safe}_coin.scad")
+        stl_filename = os.path.join("stls", f"{role_safe}_coin.stl")
 
         # Download the PNG image if it does not already exist.
         if not os.path.exists(png_filename):
@@ -131,12 +177,19 @@ def main():
         # Convert the downloaded PNG image to a greyscale image.
         convert_png_to_greyscale_png(png_filename, grey_png_filename)
 
+        # Create the sillowette image
+        create_silhouette_image(png_filename, silhouette_png_filename)
+
         # Generate the coin model using the greyscale image.
-        model = coin_model(role, grey_png_filename)
+        model = coin_model(role, silhouette_png_filename)
 
         # Render the coin model to an OpenSCAD (.scad) file.
         scad_render_to_file(model, scad_filename, file_header='$fn=100;')
         print(f"Generated {scad_filename} for role {role}")
+
+        # Export STL file using scad
+        export_coin_to_stl(model, scad_filename, stl_filename)
+        print(f"Generated {stl_filename} for role {role}")
 
 
 if __name__ == "__main__":
