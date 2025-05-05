@@ -9,7 +9,8 @@ def get_color_from_category(category):
     Categories:
       - "Townsfolk" and "Outsiders" are blue.
       - "Minions" and "Demons" are red.
-      - "Travellers" (or "Travelers") are purple.
+      - "Travellers" or "Travelers" are purple.
+      - "Fabled" are yellow.
     If the category doesn't match any of these, return "unknown".
     """
     if category in ("Townsfolk", "Outsiders"):
@@ -18,6 +19,8 @@ def get_color_from_category(category):
         return "red"
     elif category in ("Travellers", "Travelers"):
         return "purple"
+    elif category == "Fabled":
+        return "yellow"
     else:
         return "unknown"
 
