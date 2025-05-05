@@ -2,3 +2,7 @@ requests
 bs4
 solidpython
 Pillow
+
+# Development dependencies
+pytest
+ruff
