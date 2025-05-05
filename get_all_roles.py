@@ -56,7 +56,9 @@ def main():
                 # Extract the role name, trimming any extra whitespace.
                 role_name = role_span.get_text(strip=True)
                 # Construct the full image URL by prepending the base URL.
-                image_src = "https://wiki.bloodontheclocktower.com/" + image_tag.get("src")
+                image_src = "https://wiki.bloodontheclocktower.com/" + image_tag.get(
+                    "src"
+                )
                 # Find the nearest preceding h2 element to infer the role category.
                 h2 = container.find_previous("h2")
                 if h2:
