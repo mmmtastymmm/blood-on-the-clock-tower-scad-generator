@@ -159,12 +159,12 @@ def convert_png_to_greyscale_png(png_path, greyscale_png_path):
     The conversion composites the PNG on a white background (removing transparency)
     and then converts it to greyscale before saving.
     """
-    # img = Image.open(png_path).convert("RGBA")
-    # background = Image.new("RGBA", img.size, (255, 255, 255))
-    # composite = Image.alpha_composite(background, img)
-    # greyscale_img = composite.convert("L")
-    # greyscale_img.save(greyscale_png_path)
-    # print(f"Converted {png_path} to {greyscale_png_path}")
+    img = Image.open(png_path).convert("RGBA")
+    background = Image.new("RGBA", img.size, (255, 255, 255))
+    composite = Image.alpha_composite(background, img)
+    greyscale_img = composite.convert("L")
+    greyscale_img.save(greyscale_png_path)
+    print(f"Converted {png_path} to {greyscale_png_path}")
 
 
 def create_silhouette_image(input_path, output_path):
