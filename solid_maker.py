@@ -30,7 +30,7 @@ def base_coin_model(diameter=45, height=4):
 
     # Center the scaled SVG shape.
     # calculate centering offset in mm
-    centering_offset = svg_size_cm * 10. / 2.
+    centering_offset = svg_size_cm * 10.0 / 2.0
     centered_svg = translate((-centering_offset, -centering_offset, 0))(svg_shape)
 
     # Extrude the centered and scaled SVG shape.
@@ -38,20 +38,26 @@ def base_coin_model(diameter=45, height=4):
     extruded_svg = linear_extrude(height=extrude_height)(centered_svg)
 
     # --- Edge Hatch ---
-    edge_hatch_width=3
-    edge_hatch_spacing=10
-    edge_hatch_depth=1
+    edge_hatch_width = 3
+    edge_hatch_spacing = 10
+    edge_hatch_depth = 1
     edge_cuts = []
-    num_edge_cuts = int(2 * math.pi * diameter / 2 / edge_hatch_spacing)  # Approximate number of cuts
+    num_edge_cuts = int(
+        2 * math.pi * diameter / 2 / edge_hatch_spacing
+    )  # Approximate number of cuts
 
     for i in range(num_edge_cuts):
         angle = i * (360 / num_edge_cuts)
         x = (diameter / 2 + edge_hatch_depth) * math.cos(math.radians(angle))
         y = (diameter / 2 + edge_hatch_depth) * math.sin(math.radians(angle))
 
-        cut = translate((x - edge_hatch_width / 2 * math.cos(math.radians(angle)),
-                         y - edge_hatch_width / 2 * math.sin(math.radians(angle)),
-                         0))(
+        cut = translate(
+            (
+                x - edge_hatch_width / 2 * math.cos(math.radians(angle)),
+                y - edge_hatch_width / 2 * math.sin(math.radians(angle)),
+                0,
+            )
+        )(
             rotate((0, 0, angle))(
                 linear_extrude(height=height)(
                     square(size=(edge_hatch_width, edge_hatch_depth + 1), center=False)
@@ -65,21 +71,19 @@ def base_coin_model(diameter=45, height=4):
     return final_base
 
 
-def role_overlay_model(role_name, svg_filename,
-               diameter=45, height=4,
-               extrude_height=0.2, text_size=4):
+def role_overlay_model(
+    role_name, svg_filename, diameter=45, height=4, extrude_height=0.2, text_size=4
+):
     """
     Creates a colored overlay model add to the coin with the role name and image.
     """
     # Convert the image file path to an absolute path with forward slashes.
-    abs_path = Path(os.path.abspath(svg_filename).replace('\\', '/'))
+    abs_path = Path(os.path.abspath(svg_filename).replace("\\", "/"))
     shutil.copy(svg_filename, "scads")
-    print(
-        f"Copied {svg_filename} to scads directory for use in OpenSCAD."
-    )
+    print(f"Copied {svg_filename} to scads directory for use in OpenSCAD.")
 
     # Create the base coin as a simple cylinder.
-    coin = cylinder(d=diameter, h=height-0.9)
+    coin = cylinder(d=diameter, h=height - 0.9)
 
     svg_size_cm = 4.5
     scale_factor = 1.0
@@ -92,8 +96,8 @@ def role_overlay_model(role_name, svg_filename,
 
     # Center the scaled SVG shape.
     # calculate centering offset in mm
-    centering_offset = svg_size_cm * scale_factor * 10. / 2.
-    centered_svg = translate((-centering_offset, -centering_offset , 0))(scaled_svg)
+    centering_offset = svg_size_cm * scale_factor * 10.0 / 2.0
+    centered_svg = translate((-centering_offset, -centering_offset, 0))(scaled_svg)
 
     # Extrude the centered and scaled SVG shape.
     extruded_svg = linear_extrude(height=extrude_height)(centered_svg)
@@ -115,7 +119,13 @@ def role_overlay_model(role_name, svg_filename,
         y = radius * math.sin(math.radians(char_angle))
 
         # Use rotate_extrude for 3D text and rotate each character so its top points outward
-        character = text(char, font="Trade Gothic LT Std", size=text_size, halign="center", valign="bottom")
+        character = text(
+            char,
+            font="Trade Gothic LT Std",
+            size=text_size,
+            halign="center",
+            valign="bottom",
+        )
         char_3d = linear_extrude(height=extrude_height)(character)
         rotated_char = translate((x, y, height - extrude_height))(
             rotate(a=char_angle + 90, v=[0, 0, 1])(char_3d)
@@ -128,6 +138,7 @@ def role_overlay_model(role_name, svg_filename,
     overlay_design = extruded_svg + curved_text
 
     return overlay_design
+
 
 def download_png(url, filename):
     """
@@ -172,10 +183,11 @@ def create_silhouette_image(input_path, output_path):
     composite = ImageOps.invert(composite)
 
     # Threshold to black & white
-    bw = composite.point(lambda x: 0 if x < 128 else 255, mode='1')
+    bw = composite.point(lambda x: 0 if x < 128 else 255, mode="1")
 
     bw.save(output_path)
     print(f"Silhouette image saved to {output_path}")
+
 
 def convert_to_svg_with_potrace(png_path, svg_path):
     """
@@ -186,7 +198,12 @@ def convert_to_svg_with_potrace(png_path, svg_path):
         # 1. Convert PNG to PBM (Portable Bitmap) using ImageMagick
         pbm_path = png_path.replace(".png", ".pbm")  # Create a .pbm filename
         subprocess.run(
-            ["convert", png_path, "-monochrome", pbm_path],  # "-monochrome" for black/white
+            [
+                "convert",
+                png_path,
+                "-monochrome",
+                pbm_path,
+            ],  # "-monochrome" for black/white
             check=True,
             capture_output=True,
         )
@@ -194,7 +211,17 @@ def convert_to_svg_with_potrace(png_path, svg_path):
 
         # 2. Convert PBM to svg using Potrace
         subprocess.run(
-            ["potrace", pbm_path, "-o", svg_path, "--svg", "-W", "4.5cm", "-H", "4.5cm"],
+            [
+                "potrace",
+                pbm_path,
+                "-o",
+                svg_path,
+                "--svg",
+                "-W",
+                "4.5cm",
+                "-H",
+                "4.5cm",
+            ],
             check=True,
             capture_output=True,
         )
@@ -206,17 +233,17 @@ def convert_to_svg_with_potrace(png_path, svg_path):
         print(f"Error converting to svg: {e.stderr.decode()}")
         return False
     except FileNotFoundError as e:
-        print(f"Error: {e.strerror}.  Please ensure ImageMagick and Potrace are installed and in your PATH.")
+        print(
+            f"Error: {e.strerror}.  Please ensure ImageMagick and Potrace are installed and in your PATH."
+        )
         return False
 
 
 def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"):
     # Convert SCAD to STL using OpenSCAD CLI
-    result = subprocess.run([
-        "openscad",
-        "-o", stl_filename,
-        scad_filename
-    ], capture_output=True)
+    result = subprocess.run(
+        ["openscad", "-o", stl_filename, scad_filename], capture_output=True
+    )
 
     if result.returncode == 0:
         print(f"✅ STL exported successfully: {stl_filename}")
@@ -238,7 +265,7 @@ def main():
     base_model = base_coin_model()
     base_scad_filename = os.path.join("scads", f"000_coin_base.scad")
     base_stl_filename = os.path.join("stls", f"000_coin_base.stl")
-    scad_render_to_file(base_model, base_scad_filename, file_header='$fn=100;')
+    scad_render_to_file(base_model, base_scad_filename, file_header="$fn=100;")
     export_coin_to_stl(base_model, base_scad_filename, base_stl_filename)
     print("Generated the base coin scad and stl")
 
@@ -249,19 +276,23 @@ def main():
         grey_png_filename = os.path.join("grey_pngs", f"{role_safe}.png")
         svg_filename = os.path.join("svgs", f"{role_safe}.svg")
         overlay_scad_filename = os.path.join("scads", f"{role_safe}_coin_overlay.scad")
-        overlay_stl_filename = os.path.join("stls", f"{color}_{role_safe}_coin_overlay.stl")
+        overlay_stl_filename = os.path.join(
+            "stls", f"{color}_{role_safe}_coin_overlay.stl"
+        )
 
         if not os.path.exists(png_filename):
             download_png(data["image"], png_filename)
         convert_png_to_greyscale_png(png_filename, grey_png_filename)
-        create_silhouette_image(png_filename,  f"{grey_png_filename}_silhouette.png")
+        create_silhouette_image(png_filename, f"{grey_png_filename}_silhouette.png")
 
         # Convert the grayscale PNG to svg using ImageMagick and Potrace
         convert_to_svg_with_potrace(grey_png_filename, svg_filename)
 
         overlay_model = role_overlay_model(role, svg_filename)
 
-        scad_render_to_file(overlay_model, overlay_scad_filename, file_header='$fn=100;')
+        scad_render_to_file(
+            overlay_model, overlay_scad_filename, file_header="$fn=100;"
+        )
         print(f"Generated {overlay_scad_filename} for role {role} overlay")
 
         export_coin_to_stl(overlay_model, overlay_scad_filename, overlay_stl_filename)
