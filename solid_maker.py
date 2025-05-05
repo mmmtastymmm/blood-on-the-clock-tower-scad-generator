@@ -23,21 +23,24 @@ def calculate_scale_factor(greyscale_image, diameter: float) -> float:
     return scale_factor
 
 
-def coin_model(role_name, greyscale_png_filename,
-               diameter=50, height=6,
-               text_depth=2, text_size=4,
-               desired_relief_height=6.0):
+def coin_model(
+    role_name,
+    greyscale_png_filename,
+    diameter=50,
+    height=6,
+    text_depth=2,
+    text_size=4,
+    desired_relief_height=6.0,
+):
     """
     Creates a coin model with an engraved relief (image) on the coin’s top.
     The relief is normalized so that the minimum pixel value in the image becomes 0
     and the maximum pixel value corresponds to a height of `desired_relief_height` in mm.
     """
     # Convert the image file path to an absolute path with forward slashes.
-    abs_path = Path(os.path.abspath(greyscale_png_filename).replace('\\', '/'))
+    abs_path = Path(os.path.abspath(greyscale_png_filename).replace("\\", "/"))
     shutil.copy(greyscale_png_filename, "scads")
-    print(
-        f"Copied {greyscale_png_filename} to scads directory for use in OpenSCAD."
-    )
+    print(f"Copied {greyscale_png_filename} to scads directory for use in OpenSCAD.")
 
     # Create the base coin as a simple cylinder.
     coin = cylinder(d=diameter, h=height)
@@ -48,6 +51,7 @@ def coin_model(role_name, greyscale_png_filename,
     # Open the image to get the pixel value range.
     # This will be used to normalize the relief height.
     from PIL import Image
+
     img = Image.open(greyscale_png_filename)
     min_pixel, max_pixel = img.getextrema()  # Example: (47, 255)
 
@@ -76,7 +80,9 @@ def coin_model(role_name, greyscale_png_filename,
         text(role_name, size=text_size, halign="center", valign="center")
     )
     # Position the text so that it is engraved on the lower half of the coin's front.
-    engraved_text = translate((0, -diameter / 2 + text_size + 5, height - text_depth / 2))(engraved_text)
+    engraved_text = translate(
+        (0, -diameter / 2 + text_size + 5, height - text_depth / 2)
+    )(engraved_text)
 
     # Subtract both the engraved text and the image relief from the base coin,
     # resulting in an engraved coin.
@@ -127,7 +133,7 @@ def create_silhouette_image(input_path, output_path):
     composite = ImageOps.invert(composite)
 
     # Threshold to black & white
-    bw = composite.point(lambda x: 0 if x < 128 else 255, mode='1')
+    bw = composite.point(lambda x: 0 if x < 128 else 255, mode="1")
 
     bw.save(output_path)
     print(f"Silhouette image saved to {output_path}")
@@ -135,11 +141,9 @@ def create_silhouette_image(input_path, output_path):
 
 def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"):
     # Convert SCAD to STL using OpenSCAD CLI
-    result = subprocess.run([
-        "openscad",
-        "-o", stl_filename,
-        scad_filename
-    ], capture_output=True)
+    result = subprocess.run(
+        ["openscad", "-o", stl_filename, scad_filename], capture_output=True
+    )
 
     if result.returncode == 0:
         print(f"✅ STL exported successfully: {stl_filename}")
@@ -166,7 +170,9 @@ def main():
         role_safe = role.replace(" ", "_").replace("'", "")
         png_filename = os.path.join("pngs", f"{role_safe}.png")
         grey_png_filename = os.path.join("grey_pngs", f"{role_safe}.png")
-        silhouette_png_filename = os.path.join("grey_pngs", f"{role_safe}_silhouette.png")
+        silhouette_png_filename = os.path.join(
+            "grey_pngs", f"{role_safe}_silhouette.png"
+        )
         scad_filename = os.path.join("scads", f"{role_safe}_coin.scad")
         stl_filename = os.path.join("stls", f"{role_safe}_coin.stl")
 
@@ -184,7 +190,7 @@ def main():
         model = coin_model(role, silhouette_png_filename)
 
         # Render the coin model to an OpenSCAD (.scad) file.
-        scad_render_to_file(model, scad_filename, file_header='$fn=100;')
+        scad_render_to_file(model, scad_filename, file_header="$fn=100;")
         print(f"Generated {scad_filename} for role {role}")
 
         # Export STL file using scad
