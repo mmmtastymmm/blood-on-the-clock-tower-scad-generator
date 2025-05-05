@@ -34,7 +34,7 @@ pytest
 This project uses ruff for code formatting and linting. To check your code:
 
 ```bash
-ruff check .
+ruff format .
 ```
 
 ### Continuous Integration
