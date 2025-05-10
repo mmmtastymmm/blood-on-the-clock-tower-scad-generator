@@ -9,17 +9,52 @@ import requests
 from solid import *
 from solid.utils import *
 from solid import scad_render_to_file
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFont
 
 
 # Dimensional constants in mm
 COIN_DIAMETER = 45
-COIN_HEIGHT = 4
-LOGO_EXTRUDE_DEPTH = 0.4
+COIN_HEIGHT = 2
+LOGO_EXTRUDE_DEPTH = 0.6
 ROLE_EXTRUDE_DEPTH = 0.2
+FONT = "Dumbledor1"
+TEXT_SIZE = 4
 
 
-def base_coin_model():
+def get_relative_widths_pillow(font_path, font_size, characters):
+    """
+    Calculates the relative widths of characters in a proportional font using Pillow.
+
+    Args:
+        font_path (str): The path to the font file (e.g., .ttf, .otf).
+        font_size (int): The size of the font in points.
+        characters (str): A string containing the characters to measure.
+
+    Returns:
+        dict: A dictionary where keys are characters and values are their widths.
+    """
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        print(f"Error: Font file not found at {font_path}")
+        return {}
+
+    widths = {}
+    for char in characters:
+        width, height = font.getbbox(char)[2:4]  # Get width from the bounding box
+        widths[char] = width
+    return widths
+
+
+def felt_coin_model():
+    """
+    Creates the base coin model with the botc logo cut into the base
+    and small groves cut into the edge of the coin.
+    """
+    return cylinder(d=COIN_DIAMETER, h=COIN_HEIGHT)
+
+
+def logo_coin_model():
     """
     Creates the base coin model with the botc logo cut into the base
     and small groves cut into the edge of the coin.
@@ -100,23 +135,45 @@ def role_overlay_model(
     extruded_svg = translate((0, 0, COIN_HEIGHT - ROLE_EXTRUDE_DEPTH))(extruded_svg)
 
     # --- Curved Text ---
-    char_spacing = 10  # Distance between characters
+    # Calculate the width of characters, note that 5x - 2 the text size was found to be
+    # a good function for translating pixels of text into angle distance through
+    # trial and error.
+    printed_role_name = role_name.upper()
+    font_file = "assets/Trade Gothic LT Std Regular/Trade Gothic LT Std Regular.otf"
+    relative_widths = get_relative_widths_pillow(
+        font_file, TEXT_SIZE * 5 - 2, printed_role_name
+    )
+
     radius = COIN_DIAMETER / 2 - 2  # Adjust radius to bring text closer to the edge
     text_angle = 270  # Start at the bottom
-    total_angle = (len(role_name) - 1) * char_spacing
+
+    # calculate the total angle so we know where to start rendering characters
+    average_char_width = sum([relative_widths[c] for c in printed_role_name]) / len(
+        role_name
+    )
+    total_angle = (len(role_name) - 1) * average_char_width
     start_angle = text_angle - total_angle / 2
 
     text_parts = []
-    for i, char in enumerate(role_name):
-        char_angle = start_angle + i * char_spacing
+    char_angle = start_angle
+    previons_width = 0
+    for i, char in enumerate(printed_role_name):
+        # Advance the position of the character except in the case of the first
+        # character where our previous width was 0.
+        # We do this by averaging the width of this character and the one before it
+        # as the angle where we render the character can be thought of the point
+        # along the curve it is rendered in the center bottom edge of the character.
+        if previons_width != 0:
+            char_angle += sum([previons_width, relative_widths[char]]) / 2.0
+
         x = radius * math.cos(math.radians(char_angle))
         y = radius * math.sin(math.radians(char_angle))
 
         # Use rotate_extrude for 3D text and rotate each character so its top points outward
         character = text(
             char,
-            font="Trade Gothic LT Std",
-            size=4,
+            font=FONT,
+            size=TEXT_SIZE,
             halign="center",
             valign="bottom",
         )
@@ -125,6 +182,7 @@ def role_overlay_model(
             rotate(a=char_angle + 90, v=[0, 0, 1])(char_3d)
         )  # add 90 to the rotation
         text_parts.append(rotated_char)
+        previons_width = relative_widths[char]
 
     curved_text = union()(*text_parts)
 
@@ -230,9 +288,9 @@ def main():
     os.makedirs("scads", exist_ok=True)
     os.makedirs("stls", exist_ok=True)
 
-    base_model = base_coin_model()
-    base_scad_filename = os.path.join("scads", f"000_coin_base.scad")
-    base_stl_filename = os.path.join("stls", f"000_coin_base.stl")
+    base_model = felt_coin_model()
+    base_scad_filename = os.path.join("scads", f"000_coin_base_2mm_felt.scad")
+    base_stl_filename = os.path.join("stls", f"000_coin_base_2mm_felt.stl")
     scad_render_to_file(base_model, base_scad_filename, file_header="$fn=100;")
     export_coin_to_stl(base_model, base_scad_filename, base_stl_filename)
     print("Generated the base coin scad and stl")
