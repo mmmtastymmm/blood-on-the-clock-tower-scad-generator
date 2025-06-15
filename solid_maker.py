@@ -17,7 +17,7 @@ COIN_DIAMETER = 45
 COIN_HEIGHT = 2
 LOGO_EXTRUDE_DEPTH = 0.6
 ROLE_EXTRUDE_DEPTH = 0.2
-FONT = "Dumbledor1"
+FONT = "Dumbledor 1 Fixed"
 TEXT_SIZE = 4
 
 
@@ -54,62 +54,6 @@ def felt_coin_model():
     return cylinder(d=COIN_DIAMETER, h=COIN_HEIGHT)
 
 
-def logo_coin_model():
-    """
-    Creates the base coin model with the botc logo cut into the base
-    and small groves cut into the edge of the coin.
-    """
-    base = cylinder(d=COIN_DIAMETER, h=COIN_HEIGHT)
-
-    # --- Botc Logo ---
-    # Copy into the scads directory so we can import it in the scad file
-    botc_svg = "assets/botc.svg"
-    shutil.copy(botc_svg, "scads")
-
-    # Import the SVG file as a 2D shape.
-    svg_shape = import_(os.path.basename(botc_svg), convexity=10)
-
-    # Center the scaled SVG shape.
-    # calculate centering offset in mm
-    centering_offset = COIN_DIAMETER / 2.0
-    centered_svg = translate((-centering_offset, -centering_offset, 0))(svg_shape)
-
-    # Extrude the centered and scaled SVG shape.
-    extruded_svg = linear_extrude(height=LOGO_EXTRUDE_DEPTH)(centered_svg)
-
-    # --- Edge Hatch ---
-    edge_hatch_width = 3
-    edge_hatch_spacing = 10
-    edge_hatch_depth = 1
-    edge_cuts = []
-    num_edge_cuts = int(
-        2 * math.pi * COIN_DIAMETER / 2 / edge_hatch_spacing
-    )  # Approximate number of cuts
-
-    for i in range(num_edge_cuts):
-        angle = i * (360 / num_edge_cuts)
-        x = (COIN_DIAMETER / 2 + edge_hatch_depth) * math.cos(math.radians(angle))
-        y = (COIN_DIAMETER / 2 + edge_hatch_depth) * math.sin(math.radians(angle))
-
-        cut = translate(
-            (
-                x - edge_hatch_width / 2 * math.cos(math.radians(angle)),
-                y - edge_hatch_width / 2 * math.sin(math.radians(angle)),
-                0,
-            )
-        )(
-            rotate((0, 0, angle))(
-                linear_extrude(height=COIN_HEIGHT)(
-                    square(size=(edge_hatch_width, edge_hatch_depth + 1), center=False)
-                )
-            )
-        )
-        edge_cuts.append(cut)
-    edge_hatch_cuts = union()(*edge_cuts)
-
-    return base - extruded_svg - edge_hatch_cuts
-
-
 def role_overlay_model(
     role_name,
     svg_filename,
@@ -117,7 +61,7 @@ def role_overlay_model(
     """
     Creates a colored overlay model add to the coin with the role name and image.
     """
-    # Convert the image file path to an absolute path with forward slashes.
+    # Copy the svg into the scads directory so openscad can use it
     shutil.copy(svg_filename, "scads")
     print(f"Copied {svg_filename} to scads directory for use in OpenSCAD.")
 
@@ -135,14 +79,16 @@ def role_overlay_model(
     extruded_svg = translate((0, 0, COIN_HEIGHT - ROLE_EXTRUDE_DEPTH))(extruded_svg)
 
     # --- Curved Text ---
-    # Calculate the width of characters, note that 5x - 2 the text size was found to be
+    # Calculate the width of characters, note that 5x the text size was found to be
     # a good function for translating pixels of text into angle distance through
     # trial and error.
     printed_role_name = role_name.upper()
-    font_file = "assets/Trade Gothic LT Std Regular/Trade Gothic LT Std Regular.otf"
+    font_file = "assets/Dumbledor1_fixed.ttf"
     relative_widths = get_relative_widths_pillow(
-        font_file, TEXT_SIZE * 5 - 2, printed_role_name
+        font_file, TEXT_SIZE * 5, printed_role_name
     )
+    # Set the width of space to be 14
+    relative_widths[' '] = 14
 
     radius = COIN_DIAMETER / 2 - 2  # Adjust radius to bring text closer to the edge
     text_angle = 270  # Start at the bottom
@@ -151,6 +97,7 @@ def role_overlay_model(
     average_char_width = sum([relative_widths[c] for c in printed_role_name]) / len(
         role_name
     )
+
     total_angle = (len(role_name) - 1) * average_char_width
     start_angle = text_angle - total_angle / 2
 
