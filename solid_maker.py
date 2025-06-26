@@ -30,6 +30,7 @@ def get_relative_widths_pillow(font_path, font_size, characters):
         font_size (int): The size of the font in points.
         characters (str): A string containing the characters to measure.
 
+
     Returns:
         dict: A dictionary where keys are characters and values are their widths.
     """
@@ -38,6 +39,7 @@ def get_relative_widths_pillow(font_path, font_size, characters):
     except IOError:
         print(f"Error: Font file not found at {font_path}")
         return {}
+
 
     widths = {}
     for char in characters:
