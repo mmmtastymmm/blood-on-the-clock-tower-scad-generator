@@ -3,91 +3,140 @@ import json
 import shutil
 import subprocess
 import textwrap
+import math
 
 import requests
 from solid import *
 from solid.utils import *
 from solid import scad_render_to_file
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFont
 
 
-def calculate_scale_factor(greyscale_image, diameter: float) -> float:
+# Dimensional constants in mm
+COIN_DIAMETER = 45
+COIN_HEIGHT = 2
+LOGO_EXTRUDE_DEPTH = 0.6
+ROLE_EXTRUDE_DEPTH = 0.2
+FONT = "Dumbledor 1 Fixed"
+TEXT_SIZE = 4
+
+
+def get_relative_widths_pillow(font_path, font_size, characters):
     """
-    Opens the provided greyscale image and calculates a scale factor so that the image
-    will occupy 55% of the coin's diameter in its largest dimension.
+    Calculates the relative widths of characters in a proportional font using Pillow.
+
+    Args:
+        font_path (str): The path to the font file (e.g., .ttf, .otf).
+        font_size (int): The size of the font in points.
+        characters (str): A string containing the characters to measure.
+
+
+    Returns:
+        dict: A dictionary where keys are characters and values are their widths.
     """
-    img = Image.open(greyscale_image)
-    width, height = img.size
-    desired_diameter = diameter * 0.70
-    scale_factor = desired_diameter / max(width, height)
-    return scale_factor
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        print(f"Error: Font file not found at {font_path}")
+        return {}
 
 
-def coin_model(
+    widths = {}
+    for char in characters:
+        width, height = font.getbbox(char)[2:4]  # Get width from the bounding box
+        widths[char] = width
+    return widths
+
+
+def felt_coin_model():
+    """
+    Creates the base coin model with the botc logo cut into the base
+    and small groves cut into the edge of the coin.
+    """
+    return cylinder(d=COIN_DIAMETER, h=COIN_HEIGHT)
+
+
+def role_overlay_model(
     role_name,
-    greyscale_png_filename,
-    diameter=50,
-    height=6,
-    text_depth=2,
-    text_size=4,
-    desired_relief_height=6.0,
+    svg_filename,
 ):
     """
-    Creates a coin model with an engraved relief (image) on the coin’s top.
-    The relief is normalized so that the minimum pixel value in the image becomes 0
-    and the maximum pixel value corresponds to a height of `desired_relief_height` in mm.
+    Creates a colored overlay model add to the coin with the role name and image.
     """
-    # Convert the image file path to an absolute path with forward slashes.
-    abs_path = Path(os.path.abspath(greyscale_png_filename).replace("\\", "/"))
-    shutil.copy(greyscale_png_filename, "scads")
-    print(f"Copied {greyscale_png_filename} to scads directory for use in OpenSCAD.")
+    # Copy the svg into the scads directory so openscad can use it
+    shutil.copy(svg_filename, "scads")
+    print(f"Copied {svg_filename} to scads directory for use in OpenSCAD.")
 
-    # Create the base coin as a simple cylinder.
-    coin = cylinder(d=diameter, h=height)
+    # Import the SVG file as a 2D shape.
+    svg_shape = import_(os.path.basename(svg_filename), convexity=10)
 
-    # Calculate the XY scale factor so the image fits nicely on the coin.
-    scale_factor = calculate_scale_factor(greyscale_png_filename, diameter)
+    # Center the scaled SVG shape.
+    centering_offset = COIN_DIAMETER / 2.0
+    centered_svg = translate((-centering_offset, -centering_offset, 0))(svg_shape)
 
-    # Open the image to get the pixel value range.
-    # This will be used to normalize the relief height.
-    from PIL import Image
+    # Extrude the centered and scaled SVG shape.
+    extruded_svg = linear_extrude(height=ROLE_EXTRUDE_DEPTH)(centered_svg)
 
-    img = Image.open(greyscale_png_filename)
-    min_pixel, max_pixel = img.getextrema()  # Example: (47, 255)
+    # Translate the extruded svg to the top of the coin
+    extruded_svg = translate((0, 0, COIN_HEIGHT - ROLE_EXTRUDE_DEPTH))(extruded_svg)
 
-    # Compute a z-scale so that the pixel range maps to the desired relief height.
-    z_scale = desired_relief_height / (max_pixel - min_pixel)
-
-    # Create the image relief using SolidPython's surface() function.
-    # The 'center=True' option centers the relief geometry.
-    image_relief = surface(file=abs_path.name, center=True)
-
-    # Scale the relief in the XY dimensions by the calculated factor and in the Z dimension by z_scale.
-    image_relief = scale((scale_factor, scale_factor, z_scale))(image_relief)
-
-    # Translate the relief upward so that its base (corresponding to the minimum pixel value)
-    # aligns with the top of the coin (z = height).
-    image_relief = translate((0, 0, height - text_depth))(image_relief)
-
-    # Extrude a thin shape to cut into the coin
-    # image_relief = linear_extrude(height=text_depth)(image_relief)
-
-    # (Optional) Color the relief for debugging; uncomment if needed.
-    image_relief = color("red")(image_relief)
-
-    # Create the engraved text by extruding the role name.
-    engraved_text = linear_extrude(height=text_depth)(
-        text(role_name, size=text_size, halign="center", valign="center")
+    # --- Curved Text ---
+    # Calculate the width of characters, note that 5x the text size was found to be
+    # a good function for translating pixels of text into angle distance through
+    # trial and error.
+    printed_role_name = role_name.upper()
+    font_file = "assets/Dumbledor1_fixed.ttf"
+    relative_widths = get_relative_widths_pillow(
+        font_file, TEXT_SIZE * 5, printed_role_name
     )
-    # Position the text so that it is engraved on the lower half of the coin's front.
-    engraved_text = translate(
-        (0, -diameter / 2 + text_size + 5, height - text_depth / 2)
-    )(engraved_text)
+    # Set the width of space to be 14
+    relative_widths[' '] = 14
 
-    # Subtract both the engraved text and the image relief from the base coin,
-    # resulting in an engraved coin.
-    final_coin = coin - engraved_text - image_relief
-    return final_coin
+    radius = COIN_DIAMETER / 2 - 2  # Adjust radius to bring text closer to the edge
+    text_angle = 270  # Start at the bottom
+
+    # calculate the total angle so we know where to start rendering characters
+    average_char_width = sum([relative_widths[c] for c in printed_role_name]) / len(
+        role_name
+    )
+
+    total_angle = (len(role_name) - 1) * average_char_width
+    start_angle = text_angle - total_angle / 2
+
+    text_parts = []
+    char_angle = start_angle
+    previons_width = 0
+    for i, char in enumerate(printed_role_name):
+        # Advance the position of the character except in the case of the first
+        # character where our previous width was 0.
+        # We do this by averaging the width of this character and the one before it
+        # as the angle where we render the character can be thought of the point
+        # along the curve it is rendered in the center bottom edge of the character.
+        if previons_width != 0:
+            char_angle += sum([previons_width, relative_widths[char]]) / 2.0
+
+        x = radius * math.cos(math.radians(char_angle))
+        y = radius * math.sin(math.radians(char_angle))
+
+        # Use rotate_extrude for 3D text and rotate each character so its top points outward
+        character = text(
+            char,
+            font=FONT,
+            size=TEXT_SIZE,
+            halign="center",
+            valign="bottom",
+        )
+        char_3d = linear_extrude(height=ROLE_EXTRUDE_DEPTH)(character)
+        rotated_char = translate((x, y, COIN_HEIGHT - ROLE_EXTRUDE_DEPTH))(
+            rotate(a=char_angle + 90, v=[0, 0, 1])(char_3d)
+        )  # add 90 to the rotation
+        text_parts.append(rotated_char)
+        previons_width = relative_widths[char]
+
+    curved_text = union()(*text_parts)
+
+    # Combine the extruded svg and text for the overlay.
+    return extruded_svg + curved_text
 
 
 def download_png(url, filename):
@@ -117,26 +166,52 @@ def convert_png_to_greyscale_png(png_path, greyscale_png_path):
     print(f"Converted {png_path} to {greyscale_png_path}")
 
 
-def create_silhouette_image(input_path, output_path):
+def convert_to_svg_with_potrace(png_path, svg_path):
     """
-    Converts an image to a black-on-white silhouette (useful for subtracting shapes in SCAD).
-    - Flattens the image onto a white background (removes transparency).
-    - Converts to grayscale, inverts it, then thresholds to pure black & white.
+    Converts a PNG image to an svg file using ImageMagick and Potrace.
+    Requires ImageMagick and Potrace to be installed and in the system's PATH.
     """
-    img = Image.open(input_path).convert("RGBA")
+    try:
+        # 1. Convert PNG to PBM (Portable Bitmap) using ImageMagick
+        pbm_path = png_path.replace(".png", ".pbm")  # Create a .pbm filename
+        subprocess.run(
+            [
+                "convert",
+                png_path,
+                "-monochrome",
+                pbm_path,
+            ],  # "-monochrome" for black/white
+            check=True,
+            capture_output=True,
+        )
+        print(f"Converted {png_path} to {pbm_path}")
 
-    # Remove transparency by compositing onto a white background
-    background = Image.new("RGBA", img.size, (255, 255, 255, 255))
-    composite = Image.alpha_composite(background, img).convert("L")
+        dimension = "{:.2f}cm".format(COIN_DIAMETER / 10)
 
-    # Invert image so that the shape becomes black
-    composite = ImageOps.invert(composite)
+        # 2. Convert PBM to svg using Potrace
+        subprocess.run(
+            [
+                "potrace",
+                pbm_path,
+                "-o",
+                svg_path,
+                "--svg",
+                "-W",
+                dimension,
+                "-H",
+                dimension,
+            ],
+            check=True,
+            capture_output=True,
+        )
+        print(f"Converted {pbm_path} to {svg_path} using Potrace")
 
-    # Threshold to black & white
-    bw = composite.point(lambda x: 0 if x < 128 else 255, mode="1")
-
-    bw.save(output_path)
-    print(f"Silhouette image saved to {output_path}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error converting to svg: {e.stderr.decode()}")
+    except FileNotFoundError as e:
+        print(
+            f"Error: {e.strerror}.  Please ensure ImageMagick and Potrace are installed and in your PATH."
+        )
 
 
 def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"):
@@ -153,49 +228,49 @@ def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"
 
 
 def main():
-    # Load the role data from 'roles.json'.
     with open("roles.json") as f:
         roles = json.load(f)
 
-    # Create output directories for PNGs, greyscale PNGs, and SCAD files if they do not already exist.
     os.makedirs("pngs", exist_ok=True)
     os.makedirs("grey_pngs", exist_ok=True)
+    os.makedirs("svgs", exist_ok=True)
     os.makedirs("scads", exist_ok=True)
     os.makedirs("stls", exist_ok=True)
 
-    # Iterate over each role in the JSON map.
-    count = 0
+    base_model = felt_coin_model()
+    base_scad_filename = os.path.join("scads", f"000_coin_base_2mm_felt.scad")
+    base_stl_filename = os.path.join("stls", f"000_coin_base_2mm_felt.stl")
+    scad_render_to_file(base_model, base_scad_filename, file_header="$fn=100;")
+    export_coin_to_stl(base_model, base_scad_filename, base_stl_filename)
+    print("Generated the base coin scad and stl")
+
     for role, data in roles.items():
-        # Create a safe filename by replacing spaces and apostrophes.
+        color = data["color"]
         role_safe = role.replace(" ", "_").replace("'", "")
         png_filename = os.path.join("pngs", f"{role_safe}.png")
         grey_png_filename = os.path.join("grey_pngs", f"{role_safe}.png")
-        silhouette_png_filename = os.path.join(
-            "grey_pngs", f"{role_safe}_silhouette.png"
+        svg_filename = os.path.join("svgs", f"{role_safe}.svg")
+        overlay_scad_filename = os.path.join("scads", f"{role_safe}_coin_overlay.scad")
+        overlay_stl_filename = os.path.join(
+            "stls", f"{color}_{role_safe}_coin_overlay.stl"
         )
-        scad_filename = os.path.join("scads", f"{role_safe}_coin.scad")
-        stl_filename = os.path.join("stls", f"{role_safe}_coin.stl")
 
-        # Download the PNG image if it does not already exist.
         if not os.path.exists(png_filename):
             download_png(data["image"], png_filename)
-
-        # Convert the downloaded PNG image to a greyscale image.
         convert_png_to_greyscale_png(png_filename, grey_png_filename)
 
-        # Create the sillowette image
-        create_silhouette_image(png_filename, silhouette_png_filename)
+        # Convert the grayscale PNG to svg using ImageMagick and Potrace
+        convert_to_svg_with_potrace(grey_png_filename, svg_filename)
 
-        # Generate the coin model using the greyscale image.
-        model = coin_model(role, silhouette_png_filename)
+        overlay_model = role_overlay_model(role, svg_filename)
 
-        # Render the coin model to an OpenSCAD (.scad) file.
-        scad_render_to_file(model, scad_filename, file_header="$fn=100;")
-        print(f"Generated {scad_filename} for role {role}")
+        scad_render_to_file(
+            overlay_model, overlay_scad_filename, file_header="$fn=100;"
+        )
+        print(f"Generated {overlay_scad_filename} for role {role} overlay")
 
-        # Export STL file using scad
-        export_coin_to_stl(model, scad_filename, stl_filename)
-        print(f"Generated {stl_filename} for role {role}")
+        export_coin_to_stl(overlay_model, overlay_scad_filename, overlay_stl_filename)
+        print(f"Generated {overlay_stl_filename} for role {role} overlay")
 
 
 if __name__ == "__main__":
