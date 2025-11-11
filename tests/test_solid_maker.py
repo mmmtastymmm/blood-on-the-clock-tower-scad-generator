@@ -185,5 +185,8 @@ def test_get_color_from_category():
     # Test Fabled (yellow)
     assert get_color_from_category("Fabled") == "yellow"
 
+    # Test Loric (green)
+    assert get_color_from_category("Loric") == "green"
+
     # Test unknown category
     assert get_color_from_category("Unknown") == "unknown"
