@@ -4,8 +4,6 @@ from unittest.mock import patch, MagicMock
 import pytest
 from PIL import Image
 
-# Import functions from get_all_roles module
-from get_all_roles import get_color_from_category
 # Import functions from the solid_maker module
 from solid_maker import (
     convert_png_to_greyscale_png,
@@ -166,24 +164,3 @@ def test_export_coin_to_stl(mock_run):
         ["openscad", "-o", "test.stl", "test.scad"],
         capture_output=True
     )
-
-
-def test_get_color_from_category():
-    """Test that role categories are mapped to the correct colors."""
-    # Test Townsfolk and Outsiders (blue)
-    assert get_color_from_category("Townsfolk") == "blue"
-    assert get_color_from_category("Outsiders") == "blue"
-
-    # Test Minions and Demons (red)
-    assert get_color_from_category("Minions") == "red"
-    assert get_color_from_category("Demons") == "red"
-
-    # Test Travellers/Travelers (purple)
-    assert get_color_from_category("Travellers") == "purple"
-    assert get_color_from_category("Travelers") == "purple"
-
-    # Test Fabled (yellow)
-    assert get_color_from_category("Fabled") == "yellow"
-
-    # Test unknown category
-    assert get_color_from_category("Unknown") == "unknown"

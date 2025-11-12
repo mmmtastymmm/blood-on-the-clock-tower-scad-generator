@@ -3,25 +3,32 @@ import requests
 from bs4 import BeautifulSoup
 
 
-def get_color_from_category(category):
+def get_color_from_style(style):
     """
-    Given a role category, return a color associated with that category.
-    Categories:
-      - "Townsfolk" and "Outsiders" are blue.
-      - "Minions" and "Demons" are red.
-      - "Travellers" or "Travelers" are purple.
-      - "Fabled" are yellow.
-    If the category doesn't match any of these, return "unknown".
+    Given a style string, return a color name.
+
+    If the color is not known, return "unknown".
     """
-    if category in ("Townsfolk", "Outsiders"):
-        return "blue"
-    elif category in ("Minions", "Demons"):
-        return "red"
-    elif category in ("Travellers", "Travelers"):
+    # Ugly brute force that avoids using cssutils.
+    style_declarations = style.split(';')
+    for declaration in style_declarations:
+        if declaration.strip():
+            parts = declaration.split(':', 1)
+            if len(parts) == 2 and parts[0].strip() == "color":
+                color_hex = parts[1].strip()
+
+    if color_hex == "#800080":
         return "purple"
-    elif category == "Fabled":
+    elif color_hex == "#D4AF37":
         return "yellow"
+    elif color_hex == "#3297F4":
+        return "blue"
+    elif color_hex == "#8C0E12":
+        return "red"
+    elif color_hex == "#3f9651":
+        return "green"
     else:
+        print(f"Unknown color: {color_hex}")
         return "unknown"
 
 
@@ -32,6 +39,9 @@ def main():
         "https://wiki.bloodontheclocktower.com/Trouble_Brewing",
         "https://wiki.bloodontheclocktower.com/Sects_%26_Violets",
         "https://wiki.bloodontheclocktower.com/Bad_Moon_Rising",
+        "https://wiki.bloodontheclocktower.com/Travellers",
+        "https://wiki.bloodontheclocktower.com/Fabled",
+        "https://wiki.bloodontheclocktower.com/Loric",
     ]
 
     # Dictionary to hold role data.
@@ -62,37 +72,10 @@ def main():
                 image_src = "https://wiki.bloodontheclocktower.com/" + image_tag.get(
                     "src"
                 )
-                # Find the nearest preceding h2 element to infer the role category.
-                h2 = container.find_previous("h2")
-                if h2:
-                    category = h2.get_text(strip=True)
-                else:
-                    category = None
-                # Determine the color for this role based on its category.
-                color = get_color_from_category(category)
+                # Determine the color for this role based on its text style.
+                color = get_color_from_style(role_span.get("style"))
                 # Save the role's data in the dictionary.
                 role_dictionary[role_name] = {"image": image_src, "color": color}
-
-    # Process the "Travellers" page separately.
-    url = "https://wiki.bloodontheclocktower.com/Travellers"
-    response = requests.get(url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to load page {url}")
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # For each role container on the Travellers page.
-    for container in soup.select("div.small-6.medium-6.large-2.columns"):
-        role_span = container.select_one("span[data-role]")
-        image_tag = container.select_one("img.thumbimage")
-
-        if role_span and image_tag:
-            role_name = role_span.get_text(strip=True)
-            image_src = "https://wiki.bloodontheclocktower.com/" + image_tag.get("src")
-            # Since all roles on this page are travellers, we set the color to purple.
-            color = "purple"
-            # Alternatively, you could inspect a style attribute if needed.
-            role_dictionary[role_name] = {"image": image_src, "color": color}
 
     # Print out the collected roles with their image URLs and colors.
     for role, data in role_dictionary.items():
