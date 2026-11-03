@@ -6,3 +6,4 @@ stls
 .idea
 .venv
 roles.json
+__pycache__
