@@ -1,9 +1,11 @@
+import argparse
 import os
 import json
 import shutil
 import subprocess
 import textwrap
 import math
+import unicodedata
 
 import requests
 from solid import *
@@ -19,6 +21,58 @@ LOGO_EXTRUDE_DEPTH = 0.6
 ROLE_EXTRUDE_DEPTH = 0.2
 FONT = "Dumbledor 1 Fixed"
 TEXT_SIZE = 4
+# Maximum arc (in degrees) the role name may span around the bottom of the coin.
+# Longer names (common in translations) are scaled down to fit. All English role
+# names fit within this, so they are rendered exactly as before.
+MAX_TEXT_ANGLE = 180
+TRANSLATIONS_DIR = "translations"
+DEFAULT_LANGUAGE = "en"
+
+
+def normalize_role_name(name):
+    """
+    Normalizes a role name for lookups so that differences in case, accents,
+    apostrophes and hyphens don't matter, e.g. "Hell’s Librarian" == "Hell's Librarian".
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    return "".join(c for c in decomposed if c.isalnum()).casefold()
+
+
+def load_translations(language, translations_dir=TRANSLATIONS_DIR):
+    """
+    Loads the {english_name: translated_name} dictionary for a language, keyed by
+    the normalized English name. English needs no translation file.
+    """
+    if language == DEFAULT_LANGUAGE:
+        return {}
+    path = os.path.join(translations_dir, f"{language}.json")
+    with open(path, encoding="utf-8") as f:
+        names = json.load(f)
+    return {normalize_role_name(english): name for english, name in names.items()}
+
+
+def translate_role_name(role_name, translations):
+    """
+    Returns the translated name of a role, falling back to the English name.
+    """
+    if not translations:
+        return role_name
+    translated = translations.get(normalize_role_name(role_name))
+    if translated is None:
+        print(f"Warning: no translation found for {role_name}, using English name")
+        return role_name
+    return translated
+
+
+def available_languages(translations_dir=TRANSLATIONS_DIR):
+    languages = {DEFAULT_LANGUAGE}
+    if os.path.isdir(translations_dir):
+        languages.update(
+            os.path.splitext(f)[0]
+            for f in os.listdir(translations_dir)
+            if f.endswith(".json")
+        )
+    return sorted(languages)
 
 
 def get_relative_widths_pillow(font_path, font_size, characters):
@@ -101,6 +155,16 @@ def role_overlay_model(
     )
 
     total_angle = (len(role_name) - 1) * average_char_width
+
+    # Shrink long names (e.g. "Bibliotecario del Infierno") so they don't wrap
+    # around the sides of the coin.
+    text_size = TEXT_SIZE
+    if total_angle > MAX_TEXT_ANGLE:
+        scale = MAX_TEXT_ANGLE / total_angle
+        text_size = TEXT_SIZE * scale
+        relative_widths = {c: w * scale for c, w in relative_widths.items()}
+        total_angle = MAX_TEXT_ANGLE
+
     start_angle = text_angle - total_angle / 2
 
     text_parts = []
@@ -122,7 +186,7 @@ def role_overlay_model(
         character = text(
             char,
             font=FONT,
-            size=TEXT_SIZE,
+            size=text_size,
             halign="center",
             valign="bottom",
         )
@@ -227,7 +291,25 @@ def export_coin_to_stl(model, scad_filename="coin.scad", stl_filename="coin.stl"
         print(result.stderr.decode())
 
 
-def main():
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Generate SCAD and STL files for Blood on the Clocktower tokens."
+    )
+    parser.add_argument(
+        "--lang",
+        default=DEFAULT_LANGUAGE,
+        choices=available_languages(),
+        help="Language of the role names printed on the tokens (default: en).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    translations = load_translations(args.lang)
+    # Non-English overlays get a language suffix so they don't overwrite English ones
+    lang_suffix = "" if args.lang == DEFAULT_LANGUAGE else f"_{args.lang}"
+
     with open("roles.json") as f:
         roles = json.load(f)
 
@@ -238,8 +320,8 @@ def main():
     os.makedirs("stls", exist_ok=True)
 
     base_model = felt_coin_model()
-    base_scad_filename = os.path.join("scads", f"000_coin_base_2mm_felt.scad")
-    base_stl_filename = os.path.join("stls", f"000_coin_base_2mm_felt.stl")
+    base_scad_filename = os.path.join("scads", "000_coin_base_2mm_felt.scad")
+    base_stl_filename = os.path.join("stls", "000_coin_base_2mm_felt.stl")
     scad_render_to_file(base_model, base_scad_filename, file_header="$fn=100;")
     export_coin_to_stl(base_model, base_scad_filename, base_stl_filename)
     print("Generated the base coin scad and stl")
@@ -247,12 +329,15 @@ def main():
     for role, data in roles.items():
         color = data["color"]
         role_safe = role.replace(" ", "_").replace("'", "")
+        printed_name = translate_role_name(role, translations)
         png_filename = os.path.join("pngs", f"{role_safe}.png")
         grey_png_filename = os.path.join("grey_pngs", f"{role_safe}.png")
         svg_filename = os.path.join("svgs", f"{role_safe}.svg")
-        overlay_scad_filename = os.path.join("scads", f"{role_safe}_coin_overlay.scad")
+        overlay_scad_filename = os.path.join(
+            "scads", f"{role_safe}_coin_overlay{lang_suffix}.scad"
+        )
         overlay_stl_filename = os.path.join(
-            "stls", f"{color}_{role_safe}_coin_overlay.stl"
+            "stls", f"{color}_{role_safe}_coin_overlay{lang_suffix}.stl"
         )
 
         if not os.path.exists(png_filename):
@@ -262,15 +347,15 @@ def main():
         # Convert the grayscale PNG to svg using ImageMagick and Potrace
         convert_to_svg_with_potrace(grey_png_filename, svg_filename)
 
-        overlay_model = role_overlay_model(role, svg_filename)
+        overlay_model = role_overlay_model(printed_name, svg_filename)
 
         scad_render_to_file(
             overlay_model, overlay_scad_filename, file_header="$fn=100;"
         )
-        print(f"Generated {overlay_scad_filename} for role {role} overlay")
+        print(f"Generated {overlay_scad_filename} for role {printed_name} overlay")
 
         export_coin_to_stl(overlay_model, overlay_scad_filename, overlay_stl_filename)
-        print(f"Generated {overlay_stl_filename} for role {role} overlay")
+        print(f"Generated {overlay_stl_filename} for role {printed_name} overlay")
 
 
 if __name__ == "__main__":

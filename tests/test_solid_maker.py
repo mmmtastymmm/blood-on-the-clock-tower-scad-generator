@@ -13,7 +13,13 @@ from solid_maker import (
     download_png,
     convert_to_svg_with_potrace,
     export_coin_to_stl,
+    normalize_role_name,
+    load_translations,
+    translate_role_name,
+    available_languages,
+    TEXT_SIZE,
 )
+from solid import text
 
 
 # Create a fixture for a temporary test image
@@ -164,3 +170,69 @@ def test_export_coin_to_stl(mock_run):
         ["openscad", "-o", "test.stl", "test.scad"],
         capture_output=True
     )
+
+
+def test_normalize_role_name_ignores_case_accents_and_punctuation():
+    assert normalize_role_name("Hell’s Librarian") == normalize_role_name(
+        "hell's librarian"
+    )
+    assert normalize_role_name("Pit-Hag") == normalize_role_name("Pit Hag")
+    assert normalize_role_name("Ángel") == normalize_role_name("Angel")
+
+
+def test_load_translations_english_is_empty():
+    assert load_translations("en") == {}
+
+
+def test_translate_role_name(tmp_path):
+    (tmp_path / "es.json").write_text(
+        '{"Washerwoman": "Lavandera", "Hell’s Librarian": "Bibliotecario del '
+        'Infierno"}',
+        encoding="utf-8",
+    )
+    translations = load_translations("es", translations_dir=tmp_path)
+
+    assert translate_role_name("Washerwoman", translations) == "Lavandera"
+    assert (
+        translate_role_name("Hell's Librarian", translations)
+        == "Bibliotecario del Infierno"
+    )
+    # Unknown roles fall back to their English name
+    assert translate_role_name("Unknown Role", translations) == "Unknown Role"
+    # No translations means English
+    assert translate_role_name("Washerwoman", {}) == "Washerwoman"
+
+
+def test_spanish_translations_cover_trouble_brewing():
+    translations = load_translations("es")
+    for role in ["Washerwoman", "Fortune Teller", "Scarlet Woman", "Imp"]:
+        assert normalize_role_name(role) in translations
+    assert translate_role_name("Fortune Teller", translations) == "Pitonisa"
+
+
+def test_available_languages_includes_english_and_spanish():
+    languages = available_languages()
+    assert "en" in languages
+    assert "es" in languages
+
+
+@pytest.mark.parametrize(
+    "role_name, expect_scaled",
+    [("Imp", False), ("Devil's Advocate", False), ("Bibliotecario del Infierno", True)],
+)
+@patch("shutil.copy")
+@patch("solid_maker.import_")
+@patch("solid_maker.text")
+def test_long_role_names_are_scaled_down(
+    mock_text, mock_import, mock_copy, role_name, expect_scaled
+):
+    mock_text.side_effect = lambda *args, **kwargs: text(*args, **kwargs)
+    role_overlay_model(role_name, "test.svg")
+
+    sizes = {call.kwargs["size"] for call in mock_text.call_args_list}
+    assert len(sizes) == 1
+    size = sizes.pop()
+    if expect_scaled:
+        assert size < TEXT_SIZE
+    else:
+        assert size == TEXT_SIZE
